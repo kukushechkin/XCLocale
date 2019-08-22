@@ -623,6 +623,7 @@ class LTool (object):
     def validateLocalizedFile(self, src, checkBOM):
         self.getAllLocalizationFilePathsMapping(src)
         validPattern = re.compile('^\s*\"(.*?)\"\s*=\s*\"(.*?)\"\s*\;',re.DOTALL)
+        validInfoPlistPattern = re.compile('^\s*(.*?)\s*=\s*\"(.*?)\"\s*\;',re.DOTALL)
         foundError = False
         for langCode, filePaths in self.localizationFilePathDict.items() :
             for filePath in filePaths:
@@ -646,6 +647,10 @@ class LTool (object):
                         lineNo = lineNo + 1
                         if not self.isIgnoredCaseLine(filterLine):
                             patternMatched = re.search(validPattern,filterLine)
+                            if "InfoPlist" in filePath:
+                                patternMatched = re.search(validInfoPlistPattern,filterLine)
+                            else:
+                                patternMatched = re.search(validPattern,filterLine)
                             if not patternMatched:
                                 if canPrintFileName:
                                     self.printFileHeader(filePath)
