@@ -581,7 +581,8 @@ class LTool (object):
                     if os.path.exists(localizedStringfilePath):
                         langCode = (os.path.splitext(item)[0])
                         if langCode in self.localizationFilePathDict:
-                            self.localizationFilePathDict[langCode].append(localizedStringfilePath)
+                            if not localizedStringfilePath in self.localizationFilePathDict[langCode]:
+                                self.localizationFilePathDict[langCode].append(localizedStringfilePath)
                         else:
                             self.localizationFilePathDict[langCode] = [localizedStringfilePath]
             else : 
