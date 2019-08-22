@@ -496,13 +496,34 @@ class LTool (object):
             ignoreFolder = True
         return ignoreFolder
                 
-    def isIgnoredCaseLine(self,line) :
+    def isCommentStart(self, line):
         ignoreCase = False
-        ignoreCaseRegx = re.compile('^[/\*|//]+',re.MULTILINE)
-        filterLine = line.rstrip("u'\\n'")
+        ignoreCaseRegx = re.compile('^/\*',re.MULTILINE)
+        filterLine = line
         result = re.search(ignoreCaseRegx,line)
         if result or (len(filterLine) == 0):
             ignoreCase = True
+        return ignoreCase
+
+    def isCommentEnd(self, line):
+        ignoreCase = False
+        ignoreCaseRegx = re.compile('\*\/\n',re.MULTILINE)
+        filterLine = line
+        result = re.search(ignoreCaseRegx,line)
+        if result or (len(filterLine) == 0):
+            ignoreCase = True
+        return ignoreCase
+
+    def isOneLineComment(self,line) :
+        ignoreCase = False
+        type1 = re.compile('^/\*.*\*/',re.MULTILINE)
+        type2 = re.compile('^//.*',re.MULTILINE)
+        filterLine = line
+        
+        result = re.search(type1, line) or re.search(type2, line)
+        if result or (len(filterLine) == 0):
+            ignoreCase = True
+            
         return ignoreCase
 
     def getLocalizeKeyValue(self, filePath):
@@ -631,7 +652,9 @@ class LTool (object):
                     lines = f.readlines()
                     lineNo = 0
                     canPrintFileName = True
+                    isCommentState = False
                     for line in lines:
+                        
                         filterLine = line.lstrip().rstrip()
                     
                         # Check BOM
@@ -645,8 +668,25 @@ class LTool (object):
                                 break
                     
                         lineNo = lineNo + 1
-                        if not self.isIgnoredCaseLine(filterLine):
-                            patternMatched = re.search(validPattern,filterLine)
+                        
+                        if not self.isOneLineComment(filterLine):
+                            if self.isCommentEnd(filterLine):
+                                if not isCommentState == True:
+                                    foundError = True
+                                    print("[ERROR: ] broken comment at line " + str(lineNo))
+                                isCommentState = False
+                                continue
+                        
+                            if isCommentState == True:
+                                continue
+                        
+                            if self.isCommentStart(filterLine):
+                                if not isCommentState == False:
+                                    foundError = True
+                                    print("[ERROR: ] broken comment at line " + str(lineNo))
+                                isCommentState = True
+                                continue
+                            
                             if "InfoPlist" in filePath:
                                 patternMatched = re.search(validInfoPlistPattern,filterLine)
                             else:
