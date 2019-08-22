@@ -32,7 +32,7 @@
 # Version: 1.0
 
 
-import os, sys, re, shutil, getopt, fnmatch,optparse,codecs,collections
+import os, sys, re, shutil, getopt, fnmatch, optparse, codecs, collections, glob
 from optparse import OptionParser
 
 ver = '1.0'
@@ -555,10 +555,14 @@ class LTool (object):
             if self.isIgnoreFolder(item):
                 continue
             if s.endswith('.lproj'):
-                localizedStringfilePath = os.path.join(s,'Localizable.strings')
-                if os.path.exists(localizedStringfilePath):
-                    langCode = (os.path.splitext(item)[0])
-                    self.localizationFilePathDict[langCode] = localizedStringfilePath
+                localizedStringfilePaths = [f for f in glob.glob(os.path.join(s,'*.strings'), recursive=False)]
+                for localizedStringfilePath in localizedStringfilePaths:
+                    if os.path.exists(localizedStringfilePath):
+                        langCode = (os.path.splitext(item)[0])
+                        if langCode in self.localizationFilePathDict:
+                            self.localizationFilePathDict[langCode].append(localizedStringfilePath)
+                        else:
+                            self.localizationFilePathDict[langCode] = [localizedStringfilePath]
             else : 
                 if os.path.isdir(s):
                     self.getAllLocalizationFilePathsMapping(s)
@@ -571,15 +575,16 @@ class LTool (object):
     def showAllMissingLocalization(self, src):
         self.getAllLocalizationFilePathsMapping(src)
         for lObject in self.LocalizedStringList :
-            for langCode, filePath in self.localizationFilePathDict.items() :
-                langDictList = self.getLocalizeKeyValue(filePath)
-                if not next((i for i,dict in enumerate(langDictList) if lObject.key in dict), None):
-                    if lObject.key in self.missinglocatization.keys():
-                        dict = self.missinglocatization[lObject.key]
-                    else :
-                        dict = {}
-                    dict[langCode] = "Missing"
-                    self.missinglocatization[lObject.key] = dict
+            for langCode, filePaths in self.localizationFilePathDict.items() :
+                for filePath in filePaths:
+                    langDictList = self.getLocalizeKeyValue(filePath)
+                    if not next((i for i,dict in enumerate(langDictList) if lObject.key in dict), None):
+                        if lObject.key in self.missinglocatization.keys():
+                            dict = self.missinglocatization[lObject.key]
+                        else :
+                            dict = {}
+                        dict[langCode] = "Missing"
+                        self.missinglocatization[lObject.key] = dict
         self.generateMissingLocalizationReport()
         
 
@@ -619,66 +624,68 @@ class LTool (object):
         self.getAllLocalizationFilePathsMapping(src)
         validPattern = re.compile('^\s*\"(.*?)\"\s*=\s*\"(.*?)\"\s*\;',re.DOTALL)
         foundError = False
-        for langCode, filePath in self.localizationFilePathDict.items() :
-            with codecs.open(filePath, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-                lineNo = 0
-                canPrintFileName = True
-                for line in lines:
-                    filterLine = line.lstrip().rstrip()
+        for langCode, filePaths in self.localizationFilePathDict.items() :
+            for filePath in filePaths:
+                with codecs.open(filePath, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                    lineNo = 0
+                    canPrintFileName = True
+                    for line in lines:
+                        filterLine = line.lstrip().rstrip()
                     
-                    # Check BOM
-                    if checkBOM and lineNo == 0:
-                        arr = bytes(filterLine, 'utf-8')
-                        if arr[:3] == b'\xef\xbb\xbf':
-                            filterLine = arr[3:].decode('utf-8')
-                        else:
-                            foundError = True
-                            print("[ERROR: ] BOM is missing!")
-                            break
+                        # Check BOM
+                        if checkBOM and lineNo == 0:
+                            arr = bytes(filterLine, 'utf-8')
+                            if arr[:3] == b'\xef\xbb\xbf':
+                                filterLine = arr[3:].decode('utf-8')
+                            else:
+                                foundError = True
+                                print("[ERROR: ] BOM is missing!")
+                                break
                     
-                    lineNo = lineNo + 1
-                    if not self.isIgnoredCaseLine(filterLine):
-                        patternMatched = re.search(validPattern,filterLine)
-                        if not patternMatched:
-                            if canPrintFileName:
-                                self.printFileHeader(filePath)
-                                canPrintFileName = False
-                            foundError = True
-                            print("[ERROR: ] Line :" + str(lineNo) + " " + filterLine)
-            f.close()
+                        lineNo = lineNo + 1
+                        if not self.isIgnoredCaseLine(filterLine):
+                            patternMatched = re.search(validPattern,filterLine)
+                            if not patternMatched:
+                                if canPrintFileName:
+                                    self.printFileHeader(filePath)
+                                    canPrintFileName = False
+                                foundError = True
+                                print("[ERROR: ] Line :" + str(lineNo) + " " + filterLine)
+                f.close()
         if not foundError :  
             print("[INFO: ] There is no error in localization string files.")
 
 
     def  checheckDuplicatekeysValues(self,src) :
         self.getAllLocalizationFilePathsMapping(src)
-        for langCode, filePath in self.localizationFilePathDict.items() :
-            langDictList = self.getLocalizeKeyValue(filePath)
-            allKeys = [i for s in [dLang.keys() for dLang in langDictList] for i in s]
-            duplicateKeys = [item for item, count in collections.Counter(allKeys).items() if count > 1]
-            allValues = [i for s in [dLang.values() for dLang in langDictList] for i in s]
-            duplicateValues = [item for item, count in collections.Counter(allValues).items() if count > 1]
-            canPrintFileName = True
-            if duplicateKeys or duplicateValues :
-                if canPrintFileName:
-                    self.printFileHeader(filePath)
-                    canPrintFileName = False
-                print("[WARNING: ]  Duplicate localization keys")
-                print("------------------------------------------")
-                c = 0
-                for key in duplicateKeys :
-                    c = c + 1
-                    print(str(c) +". "+key)
-                print('\n')
-                print("[WARNING: ]  Duplicate translations")
-                print("---------------------------------------")
-                c = 0
-                for value in duplicateValues :
-                    c = c + 1
-                    print(str(c) +". "+value)
-            else :
-                print("[INFO: ] There is no duplicate key or value in localization string files.")
+        for langCode, filePaths in self.localizationFilePathDict.items() :
+            for filePath in filePaths:
+                langDictList = self.getLocalizeKeyValue(filePath)
+                allKeys = [i for s in [dLang.keys() for dLang in langDictList] for i in s]
+                duplicateKeys = [item for item, count in collections.Counter(allKeys).items() if count > 1]
+                allValues = [i for s in [dLang.values() for dLang in langDictList] for i in s]
+                duplicateValues = [item for item, count in collections.Counter(allValues).items() if count > 1]
+                canPrintFileName = True
+                if duplicateKeys or duplicateValues :
+                    if canPrintFileName:
+                        self.printFileHeader(filePath)
+                        canPrintFileName = False
+                    print("[WARNING: ]  Duplicate localization keys")
+                    print("------------------------------------------")
+                    c = 0
+                    for key in duplicateKeys :
+                        c = c + 1
+                        print(str(c) +". "+key)
+                    print('\n')
+                    print("[WARNING: ]  Duplicate translations")
+                    print("---------------------------------------")
+                    c = 0
+                    for value in duplicateValues :
+                        c = c + 1
+                        print(str(c) +". "+value)
+                else :
+                    print("[INFO: ] There is no duplicate key or value in localization string files.")
 
 
 def filePathError (options,parser):
