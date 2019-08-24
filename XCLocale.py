@@ -32,7 +32,7 @@
 # Version: 1.0
 
 
-import os, sys, re, shutil, getopt, fnmatch, optparse, codecs, collections, glob
+import os, sys, re, shutil, getopt, fnmatch, optparse, codecs, collections, glob, plistlib
 from optparse import OptionParser
 
 ver = '1.0'
@@ -48,6 +48,7 @@ class LTool (object):
     def __init__(self):
         self.LocalizedStringList = []
         self.localizationFilePathDict = {}
+        self.localizationDictFilePathDict = {}
         self.missinglocatization = {}
         """
             iOS Localization id for all supported lanagauge is copied from https://gist.github.com/jacobbubu/1836273#file-ioslocaleidentifiers-csv with some modification.
@@ -585,6 +586,15 @@ class LTool (object):
                                 self.localizationFilePathDict[langCode].append(localizedStringfilePath)
                         else:
                             self.localizationFilePathDict[langCode] = [localizedStringfilePath]
+                localizedStringfilePaths = [f for f in glob.glob(os.path.join(s,'*.stringsdict'), recursive=False)]
+                for localizedStringfilePath in localizedStringfilePaths:
+                    if os.path.exists(localizedStringfilePath):
+                        langCode = (os.path.splitext(item)[0])
+                        if langCode in self.localizationDictFilePathDict:
+                            if not localizedStringfilePath in self.localizationDictFilePathDict[langCode]:
+                                self.localizationDictFilePathDict[langCode].append(localizedStringfilePath)
+                        else:
+                            self.localizationDictFilePathDict[langCode] = [localizedStringfilePath]
             else : 
                 if os.path.isdir(s):
                     self.getAllLocalizationFilePathsMapping(s)
@@ -596,6 +606,7 @@ class LTool (object):
 
     def showAllMissingLocalization(self, src):
         self.getAllLocalizationFilePathsMapping(src)
+        # TODO: check localizationDictFilePathDict as well
         for lObject in self.LocalizedStringList :
             for langCode, filePaths in self.localizationFilePathDict.items() :
                 for filePath in filePaths:
@@ -641,6 +652,15 @@ class LTool (object):
         else:
             print("[INFO: ] There is no missing key in all supported localization string files.")
 
+    def validateLocalizedDictFile(self, src, checkBOM):
+        for langCode, filePaths in self.localizationDictFilePathDict.items() :
+            for filePath in filePaths:
+                with open(filePath, 'rb') as fp:
+                    try:
+                        pl = plistlib.load(fp)
+                        break
+                    except ValueError as err:
+                        print("[ERROR: ] invalid plist at " + filePath + ": " + str(err))
     
     def validateLocalizedFile(self, src, checkBOM):
         self.getAllLocalizationFilePathsMapping(src)
@@ -793,6 +813,7 @@ def main(argv):
     if options.checkSyntax:
         if not filePathError(options,parser):
             ltoolObject.validateLocalizedFile(options.filename, options.checkBOM)
+            ltoolObject.validateLocalizedDictFile(options.filename, options.checkBOM)
 
     if options.checkDuplicate:
         if not filePathError(options,parser):
